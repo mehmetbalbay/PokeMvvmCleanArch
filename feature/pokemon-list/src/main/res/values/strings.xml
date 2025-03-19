@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="pokemon_list">Pokemon Listesi</string>
+    <string name="pokemon_image">Pokemon Resmi</string>
+    <string name="error_loading_pokemons">Pokemon listesi yüklenirken hata oluştu</string>
+</resources> 
