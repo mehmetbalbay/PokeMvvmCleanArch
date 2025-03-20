@@ -10,7 +10,15 @@ data class PokemonDetailDto(
     @SerializedName("types")
     val types: List<TypeDto>,
     @SerializedName("sprites")
-    val sprites: SpritesDto
+    val sprites: SpritesDto,
+    @SerializedName("height")
+    val height: Int,
+    @SerializedName("weight")
+    val weight: Int,
+    @SerializedName("stats")
+    val stats: List<StatDto>,
+    @SerializedName("abilities")
+    val abilities: List<AbilityDto>
 )
 
 data class TypeDto(
@@ -28,4 +36,30 @@ data class TypeNameDto(
 data class SpritesDto(
     @SerializedName("front_default")
     val frontDefault: String
+)
+
+data class StatDto(
+    @SerializedName("base_stat")
+    val baseStat: Int,
+    @SerializedName("stat")
+    val stat: StatNameDto
+)
+
+data class StatNameDto(
+    @SerializedName("name")
+    val name: String
+)
+
+data class AbilityDto(
+    @SerializedName("ability")
+    val ability: AbilityNameDto,
+    @SerializedName("is_hidden")
+    val isHidden: Boolean,
+    @SerializedName("slot")
+    val slot: Int
+)
+
+data class AbilityNameDto(
+    @SerializedName("name")
+    val name: String
 ) 

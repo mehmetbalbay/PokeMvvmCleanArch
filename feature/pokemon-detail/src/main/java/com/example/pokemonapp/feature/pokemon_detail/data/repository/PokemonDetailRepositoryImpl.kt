@@ -28,7 +28,8 @@ class PokemonDetailRepositoryImpl @Inject constructor(
             height = response.height,
             weight = response.weight,
             stats = response.stats.map { Stat(it.stat.name, it.base_stat) },
-            abilities = response.abilities.map { Ability(it.ability.name, it.is_hidden) },
+            abilities = response.abilities.map { it.ability.name },
+            moves = response.moves.take(20).map { it.move.name },
             isFavorite = isFavorite
         )
     }

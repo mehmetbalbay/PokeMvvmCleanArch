@@ -58,7 +58,7 @@ fun PokemonAppNavigation() {
             )
         ) {
             PokemonDetailScreen(
-                navController = navController
+                onBackClick = { navController.navigateUp() }
             )
         }
     }

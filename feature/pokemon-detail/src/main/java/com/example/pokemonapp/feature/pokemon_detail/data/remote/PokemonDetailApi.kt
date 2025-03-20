@@ -16,7 +16,8 @@ data class PokemonDetailResponse(
     val height: Int,
     val weight: Int,
     val stats: List<StatResponse>,
-    val abilities: List<AbilityResponse>
+    val abilities: List<AbilityResponse>,
+    val moves: List<MoveResponse> = emptyList()
 )
 
 data class Sprites(
@@ -46,5 +47,13 @@ data class AbilityResponse(
 )
 
 data class Ability(
+    val name: String
+)
+
+data class MoveResponse(
+    val move: Move
+)
+
+data class Move(
     val name: String
 ) 

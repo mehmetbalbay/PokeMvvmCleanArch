@@ -1,13 +1,34 @@
 package com.example.pokemonapp.core.common
 
 /**
- * UI için Resource durum sınıfı
+ * Network ve diğer verileri sarmak için kullanılan Resource sınıfı.
+ * Bu, Clean Architecture'da domain katmanı tarafından kullanılır.
+ *
+ * @param T Wrap edilen veri tipi
  */
-sealed class Resource<out T> {
-    data class Success<T>(val data: T) : Resource<T>()
-    data class Error(val exception: Throwable, val message: String = exception.localizedMessage ?: "Bilinmeyen hata") : Resource<Nothing>()
-    data object Loading : Resource<Nothing>()
-    data object Empty : Resource<Nothing>()
+sealed class Resource<T>(
+    val data: T? = null,
+    val message: String? = null
+) {
+    /**
+     * Başarılı bir sonuç. Veriler mevcuttur.
+     */
+    class Success<T>(data: T, message: String? = null) : Resource<T>(data, message)
+
+    /**
+     * Yükleniyor durumu. Veriler henüz mevcut değildir.
+     */
+    class Loading<T>(data: T? = null) : Resource<T>(data)
+
+    /**
+     * Hata durumu. Bir hata mesajı içerir.
+     */
+    class Error<T>(message: String, data: T? = null) : Resource<T>(data, message)
+    
+    /**
+     * Boş durum. Veri yok.
+     */
+    class Empty<T>(message: String? = null, data: T? = null) : Resource<T>(data, message)
 
     val isSuccess: Boolean get() = this is Success
     val isError: Boolean get() = this is Error
@@ -21,8 +42,8 @@ sealed class Resource<out T> {
 
     companion object {
         fun <T> success(data: T): Resource<T> = Success(data)
-        fun error(exception: Throwable): Resource<Nothing> = Error(exception)
-        fun loading(): Resource<Nothing> = Loading
-        fun empty(): Resource<Nothing> = Empty
+        fun error(exception: Throwable): Resource<Nothing> = Error(exception.localizedMessage ?: "Bilinmeyen hata")
+        fun loading(): Resource<Nothing> = Loading()
+        fun empty(): Resource<Nothing> = Empty()
     }
 } 

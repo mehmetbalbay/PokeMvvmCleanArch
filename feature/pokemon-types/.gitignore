@@ -1,0 +1,19 @@
+# Build outputs
+/build
+/release
+/debug
+*.apk
+*.aar
+
+# Generated files
+/generated
+/schemas
+
+# Compiler related
+/kapt
+/tmp
+/intermediates
+/out
+
+# Local config
+consumer-rules.pro 

@@ -1,456 +1,712 @@
 package com.example.pokemonapp.feature.pokemon_list.presentation
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.List
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SearchBar
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.capitalize
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import com.example.pokemonapp.core.ui.components.FullScreenError
+import com.example.pokemonapp.core.ui.components.FullScreenLoading
 import com.example.pokemonapp.feature.pokemon_list.domain.model.Pokemon
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.launch
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.lazy.LazyRow
 
+/**
+ * Pokemon listesi ekranı
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PokemonListScreen(
-    modifier: Modifier = Modifier,
-    viewModel: PokemonListViewModel = hiltViewModel(),
-    onPokemonClick: (Int) -> Unit
+    onPokemonClick: (Int) -> Unit,
+    viewModel: PokemonListViewModel = hiltViewModel()
 ) {
-    val state by viewModel.state.collectAsStateWithLifecycle()
-    val availableTypes by viewModel.availableTypes.collectAsStateWithLifecycle()
-    var showSortMenu by remember { mutableStateOf(false) }
+    val state by viewModel.state.collectAsState()
+    val listState = rememberLazyListState()
+    val availableTypes by viewModel.availableTypes.collectAsState()
     
-    // Lazy list state for pagination
-    val lazyListState = rememberLazyListState()
+    // Arama çubuğu aktif/pasif durumu
+    var isSearchActive by remember { mutableStateOf(false) }
     
-    // Sayfalama için scroll listener
-    LaunchedEffect(lazyListState) {
-        snapshotFlow { 
-            val layoutInfo = lazyListState.layoutInfo
-            val totalItems = layoutInfo.totalItemsCount
-            val lastVisibleItemIndex = (layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0) + 1
-            
-            // Son 10 öğeye geldiğimizde yeni veri yükleme işlemini başlat
-            val shouldLoadMore = lastVisibleItemIndex > (totalItems - 10) && totalItems > 0
-            
-            shouldLoadMore
-        }
-        .distinctUntilChanged()
-        .collect { shouldLoadMore ->
-            // Herhangi bir filtreleme aktifse (arama, tip, favoriler), otomatik yükleme yapma
-            val isFilterActive = state.searchQuery.isNotEmpty() || 
-                                state.selectedType != null || 
-                                state.showFavoritesOnly
-            
-            if (shouldLoadMore && !state.isLoading && !isFilterActive) {
-                viewModel.loadPokemons()
-            }
+    // Filtre dialog görünürlük durumu
+    var showFilterDialog by remember { mutableStateOf(false) }
+    
+    // Snackbar için
+    val snackbarHostState = remember { SnackbarHostState() }
+    
+    // Favori mesajını göster
+    LaunchedEffect(state.favoriteActionMessage) {
+        state.favoriteActionMessage?.let { message ->
+            snackbarHostState.showSnackbar(
+                message = message,
+                duration = SnackbarDuration.Short
+            )
+            // Mesajı gösterdikten sonra temizle
+            viewModel.clearFavoriteMessage()
         }
     }
-
+    
     Scaffold(
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         topBar = {
-            TopAppBar(
-                title = { Text("Pokemon Listesi") },
-                actions = {
-                    IconButton(onClick = { viewModel.toggleFavoritesOnly() }) {
-                        Icon(
-                            imageVector = if (state.showFavoritesOnly) {
-                                Icons.Default.Favorite
-                            } else {
-                                Icons.Default.FavoriteBorder
-                            },
-                            contentDescription = if (state.showFavoritesOnly) {
-                                "Tüm Pokemon'ları göster"
-                            } else {
-                                "Sadece favorileri göster"
-                            }
-                        )
-                    }
-                    Box {
-                        IconButton(onClick = { showSortMenu = true }) {
-                            Icon(Icons.Default.MoreVert, contentDescription = "Sırala")
+            Column {
+                TopAppBar(
+                    title = { Text("Pokémon Listesi") },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    ),
+                    actions = {
+                        // Filtre butonu
+                        IconButton(onClick = { showFilterDialog = true }) {
+                            Icon(
+                                imageVector = Icons.Default.List,
+                                contentDescription = "Filtrele"
+                            )
                         }
-                        DropdownMenu(
-                            expanded = showSortMenu,
-                            onDismissRequest = { showSortMenu = false }
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("ID'ye göre") },
-                                onClick = {
-                                    viewModel.updateSortOrder(SortOrder.ID)
-                                    showSortMenu = false
-                                }
+                        
+                        // Favoriler butonu
+                        IconButton(onClick = { viewModel.toggleShowFavoritesOnly() }) {
+                            Icon(
+                                imageVector = if (state.showFavoritesOnly) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                contentDescription = if (state.showFavoritesOnly) "Tüm Pokemonları Göster" else "Sadece Favorileri Göster",
+                                tint = if (state.showFavoritesOnly) Color.Red else LocalContentColor.current
                             )
-                            DropdownMenuItem(
-                                text = { Text("İsme göre (A-Z)") },
-                                onClick = {
-                                    viewModel.updateSortOrder(SortOrder.NAME_ASC)
-                                    showSortMenu = false
-                                }
+                        }
+                    }
+                )
+                
+                // Daima görünür arama çubuğu
+                SearchBar(
+                    query = state.searchQuery,
+                    onQueryChange = { viewModel.updateSearchQuery(it) },
+                    onSearch = { isSearchActive = false },
+                    active = isSearchActive,
+                    onActiveChange = { isSearchActive = it },
+                    placeholder = { Text("Pokémon ara...") },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = "Ara"
+                        )
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    // Arama önerileri burada gösterilebilir
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        items(availableTypes) { type ->
+                            Text(
+                                text = "Tip: ${type.replaceFirstChar { it.uppercase() }}",
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        if (!state.selectedTypes.contains(type)) {
+                                            viewModel.toggleTypeFilter(type)
+                                        }
+                                        viewModel.updateSearchQuery("")
+                                        isSearchActive = false
+                                    }
+                                    .padding(16.dp)
                             )
-                            DropdownMenuItem(
-                                text = { Text("İsme göre (Z-A)") },
-                                onClick = {
-                                    viewModel.updateSortOrder(SortOrder.NAME_DESC)
-                                    showSortMenu = false
-                                }
+                        }
+                        items(state.pokemons.take(5)) { pokemon ->
+                            Text(
+                                text = pokemon.name.replaceFirstChar { it.uppercase() },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        viewModel.updateSearchQuery("")
+                                        isSearchActive = false
+                                        onPokemonClick(pokemon.id)
+                                    }
+                                    .padding(16.dp)
                             )
                         }
                     }
                 }
-            )
+            }
         }
     ) { paddingValues ->
-        Column(
-            modifier = modifier
+        Box(
+            modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            SearchBar(
-                query = state.searchQuery,
-                onQueryChange = { viewModel.updateSearchQuery(it) },
-                onSearch = { },
-                active = false,
-                onActiveChange = { },
-                placeholder = { Text("Pokemon ara...") },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp)
-            ) { }
-
-            LazyRow(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                item {
-                    FilterChip(
-                        selected = state.selectedType == null,
-                        onClick = { viewModel.updateSelectedType(null) },
-                        label = { Text("Tümü") }
-                    )
-                }
-                
-                items(availableTypes) { type ->
-                    FilterChip(
-                        selected = state.selectedType == type,
-                        onClick = { viewModel.updateSelectedType(type) },
-                        label = { Text(type.replaceFirstChar { it.uppercase() }) }
+            // Yükleme durumu
+            if (state.isLoading && state.pokemons.isEmpty()) {
+                FullScreenLoading(message = "Pokémonlar yükleniyor...")
+            }
+            // Hata durumu
+            else if (state.error != null && state.pokemons.isEmpty()) {
+                FullScreenError(
+                    message = state.error ?: "Bilinmeyen bir hata oluştu",
+                    onRetry = { viewModel.loadPokemons() }
+                )
+            }
+            // Boş durum
+            else if (state.isEmpty && state.pokemons.isEmpty()) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "Pokémon bulunamadı",
+                        style = MaterialTheme.typography.titleLarge
                     )
                 }
             }
-            
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 16.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                when {
-                    state.isLoading && state.pokemons.isEmpty() -> {
-                        LoadingState()
+            // İçerik
+            else {
+                Column {
+                    // Aktif filtreler gösterimi
+                    if (state.selectedTypes.isNotEmpty()) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "Filtreler:",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            
+                            state.selectedTypes.take(3).forEach { type ->
+                                FilterChip(
+                                    selected = true,
+                                    onClick = { viewModel.toggleTypeFilter(type) },
+                                    label = { Text(type.replaceFirstChar { it.uppercase() }) },
+                                    trailingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.Close,
+                                            contentDescription = "Filtreyi Kaldır"
+                                        )
+                                    }
+                                )
+                            }
+                            
+                            if (state.selectedTypes.size > 3) {
+                                Text(
+                                    text = "+${state.selectedTypes.size - 3}",
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                        }
                     }
-                    state.error != null && state.pokemons.isEmpty() -> {
-                        ErrorState(
-                            message = state.error ?: "Pokemonları yüklerken bir hata oluştu. Lütfen tekrar deneyin.",
-                            onRetry = { viewModel.refresh() }
+                    
+                    // Pokemon listesi
+                    LazyColumn(
+                        state = listState,
+                        contentPadding = PaddingValues(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        items(state.filteredPokemons.ifEmpty { state.pokemons }) { pokemon ->
+                            PokemonItem(
+                                pokemon = pokemon,
+                                onClick = { onPokemonClick(pokemon.id) },
+                                onFavoriteClick = { viewModel.toggleFavorite(pokemon.id) },
+                                isFavoriteActionInProgress = state.favoriteActionInProgress.contains(pokemon.id)
+                            )
+                        }
+                    }
+                    
+                    // Scroll sonuna geldiğinde daha fazla yükle
+                    LaunchedEffect(listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index) {
+                        val layoutInfo = listState.layoutInfo
+                        val totalItemsCount = layoutInfo.totalItemsCount
+                        val lastVisibleItemIndex = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+                        
+                        if (lastVisibleItemIndex >= totalItemsCount - 5 && !state.isLoadingMore && state.hasMoreItems) {
+                            viewModel.loadMorePokemons()
+                        }
+                    }
+                }
+                
+                // Daha fazla yükleniyor göstergesi
+                if (state.isLoadingMore) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                            .align(Alignment.BottomCenter)
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .align(Alignment.Center)
                         )
                     }
-                    else -> {
-                        Column(
-                            modifier = Modifier.fillMaxSize()
-                        ) {
-                            // Filtreleme mantığı bir kez hesaplansın
-                            val filteredPokemons = state.pokemons
-                                .filter { pokemon ->
-                                    val matchesSearch = pokemon.name.contains(state.searchQuery, ignoreCase = true)
-                                    val matchesType = state.selectedType == null || pokemon.types.contains(state.selectedType)
-                                    val matchesFavorites = !state.showFavoritesOnly || pokemon.isFavorite
-                                    matchesSearch && matchesType && matchesFavorites
-                                }
-                                .let { pokemons ->
-                                    when (state.sortOrder) {
-                                        SortOrder.ID -> pokemons.sortedBy { it.id }
-                                        SortOrder.NAME_ASC -> pokemons.sortedBy { it.name }
-                                        SortOrder.NAME_DESC -> pokemons.sortedByDescending { it.name }
-                                    }
-                                }
+                }
+            }
+            
+            // Filtre Dialog
+            if (showFilterDialog) {
+                TypeFilterDialog(
+                    selectedTypes = state.selectedTypes,
+                    availableTypes = availableTypes,
+                    onDismiss = { showFilterDialog = false },
+                    onConfirm = { selectedTypes ->
+                        viewModel.setTypeFilters(selectedTypes)
+                        showFilterDialog = false
+                    }
+                )
+            }
+        }
+    }
+}
 
-                            // Filtrelemeyle ilgili bilgi göster
-                            if (state.pokemons.isNotEmpty()) {
-                                val isFilterActive = state.searchQuery.isNotEmpty() || 
-                                                    state.selectedType != null || 
-                                                    state.showFavoritesOnly
-                                
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .background(MaterialTheme.colorScheme.secondaryContainer)
-                                        .padding(8.dp)
-                                ) {
-                                    Text(
-                                        text = if (isFilterActive) {
-                                            "Filtrelenmiş: ${filteredPokemons.size} Pokemon (Toplam: ${state.pokemons.size})"
-                                        } else {
-                                            "Toplam ${state.pokemons.size} Pokemon"
-                                        },
-                                        style = MaterialTheme.typography.bodyMedium.copy(
-                                            color = MaterialTheme.colorScheme.onSecondaryContainer
-                                        ),
-                                        modifier = Modifier.align(Alignment.Center)
-                                    )
-                                }
+/**
+ * Pokémon tiplerini filtrelemek için dialog
+ */
+@Composable
+fun TypeFilterDialog(
+    selectedTypes: List<String>,
+    availableTypes: List<String>,
+    onDismiss: () -> Unit,
+    onConfirm: (List<String>) -> Unit
+) {
+    val tempSelectedTypes = remember { mutableStateListOf<String>().apply { addAll(selectedTypes) } }
+    
+    // Tip grupları
+    val primaryTypes = listOf("normal", "fire", "water", "electric", "grass", "ice", "fighting", "poison", "ground")
+    val secondaryTypes = listOf("flying", "psychic", "bug", "rock", "ghost", "dragon", "dark", "steel", "fairy")
+    
+    // Tüm tipleri seç/temizle
+    val allSelected = remember(tempSelectedTypes) { tempSelectedTypes.size == availableTypes.size }
+    
+    Dialog(
+        onDismissRequest = onDismiss
+    ) {
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surface,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+            ) {
+                Text(
+                    text = "Pokémon Tiplerini Filtrele",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+                
+                // Tümünü Seç / Temizle butonları
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    TextButton(
+                        onClick = {
+                            if (allSelected) {
+                                tempSelectedTypes.clear()
+                            } else {
+                                tempSelectedTypes.clear()
+                                tempSelectedTypes.addAll(availableTypes)
                             }
-
-                            if (state.pokemons.isEmpty() && !state.isLoading && state.error == null) {
-                                // Veri yokken boş durum
-                                EmptyState(
-                                    message = "Henüz hiç Pokemon yok. Yüklemek için 'Yenile' düğmesine tıklayın.",
-                                    actionText = "Yenile",
-                                    onAction = { viewModel.refresh() },
-                                    modifier = Modifier.weight(1f)
-                                )
-                            } else if (filteredPokemons.isEmpty() && state.pokemons.isNotEmpty()) {
-                                // Filtreleme sonucu boş
-                                val message = when {
-                                    state.searchQuery.isNotEmpty() -> "\"${state.searchQuery}\" ile ilgili sonuç bulunamadı"
-                                    state.selectedType != null -> "${state.selectedType} tipinde Pokemon bulunamadı"
-                                    state.showFavoritesOnly -> "Henüz favori Pokemon eklenmemiş"
-                                    else -> "Filtreleme sonucunda Pokemon bulunamadı"
-                                }
-                                
-                                EmptyState(
-                                    message = message,
-                                    actionText = "Filtreleri Temizle",
-                                    onAction = { 
-                                        viewModel.updateSearchQuery("")
-                                        viewModel.updateSelectedType(null)
-                                        if (state.showFavoritesOnly) {
-                                            viewModel.toggleFavoritesOnly()
+                        }
+                    ) {
+                        Text(
+                            text = if (allSelected) "Tümünü Temizle" else "Tümünü Seç",
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    
+                    // Seçilen filtre sayısı
+                    Text(
+                        text = "${tempSelectedTypes.size}/${availableTypes.size}",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                // Filtre içeriği
+                if (availableTypes.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(200.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator()
+                    }
+                } else {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        // Birincil tipler
+                        Text(
+                            text = "Temel Tipler",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(vertical = 8.dp)
+                        )
+                        
+                        LazyRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            contentPadding = PaddingValues(4.dp)
+                        ) {
+                            items(primaryTypes.filter { availableTypes.contains(it) }) { typeName ->
+                                val isSelected = tempSelectedTypes.contains(typeName)
+                                FilterChip(
+                                    selected = isSelected,
+                                    onClick = { 
+                                        if (isSelected) {
+                                            tempSelectedTypes.remove(typeName)
+                                        } else {
+                                            tempSelectedTypes.add(typeName)
                                         }
                                     },
-                                    modifier = Modifier.weight(1f)
+                                    label = { Text(typeName.replaceFirstChar { it.uppercase() }) },
+                                    leadingIcon = {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(16.dp)
+                                                .clip(CircleShape)
+                                                .background(getPokemonTypeColor(typeName))
+                                        )
+                                    },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                                        selectedContainerColor = getPokemonTypeColor(typeName).copy(alpha = 0.3f)
+                                    )
                                 )
-                            } else {
-                                LazyColumn(
-                                    state = lazyListState,
-                                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    items(filteredPokemons) { pokemon ->
-                                        PokemonItem(
-                                            pokemon = pokemon,
-                                            onClick = { onPokemonClick(pokemon.id) },
-                                            onFavoriteClick = { viewModel.toggleFavorite(pokemon.id) }
+                            }
+                        }
+                        
+                        Spacer(modifier = Modifier.height(16.dp))
+                        
+                        // İkincil tipler
+                        Text(
+                            text = "Özel Tipler",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(vertical = 8.dp)
+                        )
+                        
+                        LazyRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            contentPadding = PaddingValues(4.dp)
+                        ) {
+                            items(secondaryTypes.filter { availableTypes.contains(it) }) { typeName ->
+                                val isSelected = tempSelectedTypes.contains(typeName)
+                                FilterChip(
+                                    selected = isSelected,
+                                    onClick = { 
+                                        if (isSelected) {
+                                            tempSelectedTypes.remove(typeName)
+                                        } else {
+                                            tempSelectedTypes.add(typeName)
+                                        }
+                                    },
+                                    label = { Text(typeName.replaceFirstChar { it.uppercase() }) },
+                                    leadingIcon = {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(16.dp)
+                                                .clip(CircleShape)
+                                                .background(getPokemonTypeColor(typeName))
                                         )
-                                    }
-                                }
-                                
-                                // Alt kısımda yükleme durumlarını ve butonları göster
-                                if (state.isLoading && state.searchQuery.isEmpty() && 
-                                    state.selectedType == null && !state.showFavoritesOnly) {
-                                    Column(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(8.dp),
-                                        horizontalAlignment = Alignment.CenterHorizontally
-                                    ) {
-                                        CircularProgressIndicator(
-                                            modifier = Modifier.size(32.dp),
-                                            strokeWidth = 2.dp
-                                        )
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        Text(
-                                            text = "Daha fazla Pokemon yükleniyor...",
-                                            style = MaterialTheme.typography.bodyMedium
-                                        )
-                                    }
-                                } else if (!state.isLoading && state.searchQuery.isEmpty() && 
-                                           state.selectedType == null && !state.showFavoritesOnly) {
-                                    // "Daha fazla yükle" butonu
-                                    Button(
-                                        onClick = { viewModel.loadMorePokemons() },
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(vertical = 8.dp)
-                                    ) {
-                                        Text("Daha fazla yükle")
-                                    }
+                                    },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                                        selectedContainerColor = getPokemonTypeColor(typeName).copy(alpha = 0.3f)
+                                    )
+                                )
+                            }
+                        }
+                        
+                        // Diğer tipler (tanımlanan gruplarda olmayan tipler)
+                        val otherTypes = availableTypes.filter { 
+                            !primaryTypes.contains(it) && !secondaryTypes.contains(it) 
+                        }
+                        
+                        if (otherTypes.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(16.dp))
+                            
+                            Text(
+                                text = "Diğer Tipler",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(vertical = 8.dp)
+                            )
+                            
+                            LazyRow(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                contentPadding = PaddingValues(4.dp)
+                            ) {
+                                items(otherTypes) { typeName ->
+                                    val isSelected = tempSelectedTypes.contains(typeName)
+                                    FilterChip(
+                                        selected = isSelected,
+                                        onClick = { 
+                                            if (isSelected) {
+                                                tempSelectedTypes.remove(typeName)
+                                            } else {
+                                                tempSelectedTypes.add(typeName)
+                                            }
+                                        },
+                                        label = { Text(typeName.replaceFirstChar { it.uppercase() }) },
+                                        leadingIcon = {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(16.dp)
+                                                    .clip(CircleShape)
+                                                    .background(getPokemonTypeColor(typeName))
+                                            )
+                                        }
+                                    )
                                 }
                             }
                         }
                     }
                 }
+                
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 16.dp),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(
+                        onClick = onDismiss
+                    ) {
+                        Text("İptal")
+                    }
+                    
+                    Spacer(modifier = Modifier.width(8.dp))
+                    
+                    Button(
+                        onClick = { onConfirm(tempSelectedTypes.toList()) }
+                    ) {
+                        Text("Uygula")
+                    }
+                }
             }
         }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * Pokemon liste öğesi kartı
+ */
 @Composable
-private fun PokemonItem(
+fun PokemonItem(
     pokemon: Pokemon,
     onClick: () -> Unit,
-    onFavoriteClick: () -> Unit
+    onFavoriteClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    isFavoriteActionInProgress: Boolean = false
 ) {
     Card(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth()
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(8.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
+            modifier = Modifier.padding(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            AsyncImage(
-                model = pokemon.imageUrl,
-                contentDescription = pokemon.name,
-                modifier = Modifier.size(64.dp)
-            )
-            Spacer(modifier = Modifier.width(16.dp))
+            // Pokemon resmi
+            Box(
+                contentAlignment = Alignment.Center
+            ) {
+                AsyncImage(
+                    model = pokemon.imageUrl,
+                    contentDescription = pokemon.name,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .size(100.dp)
+                        .padding(4.dp)
+                )
+            }
+            
+            Spacer(modifier = Modifier.width(8.dp))
+            
             Column(
                 modifier = Modifier.weight(1f)
             ) {
-                Text(
-                    text = pokemon.name,
-                    style = MaterialTheme.typography.titleMedium
-                )
-                Text(
-                    text = "Tipler: ${pokemon.types.joinToString(", ")}",
-                    style = MaterialTheme.typography.bodyMedium
-                )
+                // Pokemon ID ve adı
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "#${pokemon.id.toString().padStart(3, '0')}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    )
+                    
+                    Spacer(modifier = Modifier.width(8.dp))
+                    
+                    Text(
+                        text = pokemon.name,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                
+                Spacer(modifier = Modifier.height(4.dp))
+                
+                // Pokemon tipleri
+                Row {
+                    pokemon.types.take(2).forEach { type ->
+                        val backgroundColor = getPokemonTypeColor(type)
+                        Surface(
+                            modifier = Modifier.padding(end = 4.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            color = backgroundColor
+                        ) {
+                            Text(
+                                text = type.replaceFirstChar { it.uppercase() },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.White,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+                }
             }
+            
+            // Favori butonu
             IconButton(
                 onClick = onFavoriteClick,
-                modifier = Modifier.padding(start = 8.dp)
+                enabled = !isFavoriteActionInProgress,
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f))
             ) {
-                Icon(
-                    imageVector = if (pokemon.isFavorite) {
-                        Icons.Default.Favorite
-                    } else {
-                        Icons.Default.FavoriteBorder
-                    },
-                    contentDescription = if (pokemon.isFavorite) {
-                        "Favorilerden çıkar"
-                    } else {
-                        "Favorilere ekle"
-                    }
-                )
+                if (isFavoriteActionInProgress) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp,
+                        color = if (pokemon.isFavorite) Color.Red else MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                } else {
+                    Icon(
+                        imageVector = if (pokemon.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                        contentDescription = if (pokemon.isFavorite) "Favorilerden Çıkar" else "Favorilere Ekle",
+                        tint = if (pokemon.isFavorite) Color.Red else MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
             }
         }
     }
 }
 
-// Boş durumları göstermek için yardımcı composable fonksiyonlar ekleyelim
+/**
+ * Pokemon tipine göre renk döndürür
+ */
 @Composable
-private fun EmptyState(
-    message: String,
-    modifier: Modifier = Modifier,
-    actionText: String? = null,
-    onAction: (() -> Unit)? = null
-) {
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Icon(
-            imageVector = Icons.Default.FavoriteBorder,
-            contentDescription = null,
-            modifier = Modifier
-                .size(64.dp)
-                .padding(bottom = 16.dp),
-            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
-        )
-        Text(
-            text = message,
-            style = MaterialTheme.typography.bodyLarge,
-            textAlign = TextAlign.Center
-        )
-        if (actionText != null && onAction != null) {
-            Spacer(modifier = Modifier.height(16.dp))
-            Button(onClick = onAction) {
-                Text(actionText)
-            }
-        }
-    }
-}
-
-@Composable
-private fun LoadingState(
-    modifier: Modifier = Modifier
-) {
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .fillMaxHeight()
-            .padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        CircularProgressIndicator(
-            modifier = Modifier.size(48.dp)
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-        Text(
-            text = "Pokemonlar yükleniyor...",
-            style = MaterialTheme.typography.bodyLarge
-        )
-    }
-}
-
-@Composable
-private fun ErrorState(
-    message: String,
-    onRetry: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .fillMaxHeight()
-            .padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Icon(
-            imageVector = Icons.Default.Warning,
-            contentDescription = null,
-            modifier = Modifier
-                .size(64.dp)
-                .padding(bottom = 16.dp),
-            tint = MaterialTheme.colorScheme.error
-        )
-        Text(
-            text = message,
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.error,
-            textAlign = TextAlign.Center
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-        Button(onClick = onRetry) {
-            Text("Tekrar Dene")
-        }
+fun getPokemonTypeColor(type: String): Color {
+    return when (type.lowercase()) {
+        "fire" -> Color(0xFFE57373)
+        "water" -> Color(0xFF64B5F6)
+        "grass" -> Color(0xFF8BC34A)
+        "electric" -> Color(0xFFFFD54F)
+        "psychic" -> Color(0xFFBA68C8)
+        "ice" -> Color(0xFF80DEEA)
+        "dragon" -> Color(0xFF7986CB)
+        "dark" -> Color(0xFF616161)
+        "fairy" -> Color(0xFFF8BBD0)
+        "normal" -> Color(0xFFBDBDBD)
+        "fighting" -> Color(0xFFBF360C)
+        "flying" -> Color(0xFF90CAF9)
+        "poison" -> Color(0xFFCE93D8)
+        "ground" -> Color(0xFFBCAAA4)
+        "rock" -> Color(0xFFFF7043)
+        "bug" -> Color(0xFFAED581)
+        "ghost" -> Color(0xFF9575CD)
+        "steel" -> Color(0xFFB0BEC5)
+        else -> Color(0xFFBDBDBD)
     }
 } 

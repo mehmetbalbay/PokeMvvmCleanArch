@@ -8,7 +8,8 @@ data class PokemonDetail(
     val height: Int,
     val weight: Int,
     val stats: List<Stat>,
-    val abilities: List<Ability>,
+    val abilities: List<String>,
+    val moves: List<String> = emptyList(),
     val isFavorite: Boolean = false
 )
 

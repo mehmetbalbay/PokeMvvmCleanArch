@@ -1,0 +1,17 @@
+# Build outputs
+/build
+/release
+/debug
+*.aar
+
+# Generated files
+/generated
+
+# Compiler related
+/kapt
+/tmp
+/intermediates
+/out
+
+# Local config
+consumer-rules.pro 

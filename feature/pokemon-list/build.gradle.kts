@@ -41,14 +41,16 @@ android {
 }
 
 dependencies {
-    // Core modülleri
-    implementation(project(":core:common"))
-    implementation(project(":core:database"))
+    // Core modülleri - Clean Architecture bağımlılıkları
+    implementation(project(":core:common"))     // Ortak utility ve extension fonksiyonları
+    implementation(project(":core:database"))   // Veritabanı işlemleri için
+    implementation(project(":core:network"))    // Network işlemleri için
+    implementation(project(":core:ui"))         // Ortak UI bileşenleri
     
-    // Core
+    // Android Core
     implementation("androidx.core:core-ktx:1.12.0")
     
-    // Compose
+    // Compose UI
     implementation(platform("androidx.compose:compose-bom:2024.02.00"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
@@ -56,6 +58,7 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.runtime:runtime")
     implementation("androidx.compose.foundation:foundation")
+    implementation("androidx.compose.foundation:foundation-layout")
     debugImplementation("androidx.compose.ui:ui-tooling")
     
     // Lifecycle
@@ -67,27 +70,30 @@ dependencies {
     // Navigation
     implementation("androidx.navigation:navigation-compose:2.7.7")
     
-    // Retrofit
+    // Network
     implementation("com.squareup.retrofit2:retrofit:2.9.0")
     implementation("com.squareup.retrofit2:converter-gson:2.9.0")
     
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     
-    // Hilt
+    // Dependency Injection
     implementation("com.google.dagger:hilt-android:2.50")
     kapt("com.google.dagger:hilt-android-compiler:2.50")
     implementation("androidx.hilt:hilt-navigation-compose:1.1.0")
     
-    // Coil
+    // Image Loading
     implementation("io.coil-kt:coil-compose:2.5.0")
     
-    // Room
+    // Local Database
     implementation("androidx.room:room-runtime:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")
     kapt("androidx.room:room-compiler:2.6.1")
     
-    // Test
+    // Color Extraction
+    implementation("androidx.palette:palette-ktx:1.0.0")
+    
+    // Testing
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")

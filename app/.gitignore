@@ -1,0 +1,33 @@
+# Build outputs
+/build
+/release
+/debug
+*.apk
+*.aab
+*.ap_
+output.json
+
+# Generated files
+/generated
+
+# Local configuration
+.consulo/
+/objectbox-models
+app.properties
+keystore.properties
+
+# Test outputs
+/test-results
+/androidTest-results
+
+# Signing configs
+*.jks
+*.keystore
+
+# ProGuard
+proguard-rules.pro
+proguard-android*.txt
+/mapping.txt
+
+# Database
+/schemas

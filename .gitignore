@@ -1,0 +1,102 @@
+# Android Studio / IntelliJ IDEA
+*.iml
+.idea/
+# !.idea/codeStyles/
+# !.idea/runConfigurations/
+# !.idea/inspectionProfiles/
+# !.idea/icon.png
+# !.idea/vcs.xml
+# !.idea/scopes/
+
+# Gradle Files
+.gradle/
+build/
+*/build/
+**/build/
+captures/
+.externalNativeBuild/
+.cxx/
+output.json
+
+# Local Configuration Files
+local.properties
+keystore.properties
+gradle.properties
+gradle-wrapper.jar
+!gradle-wrapper.jar
+
+# Cache
+.gradle/
+/reports/
+/javadoc/
+.navigation/
+*.hprof
+
+# Generated Files
+.DS_Store
+bin/
+gen/
+out/
+*.apk
+*.ap_
+*.aab
+*.aar
+app/release/
+output.json
+
+# Log Files
+*.log
+.log/
+firebase-debug.log
+crashlytics-build.properties
+fabric.properties
+.firebase/
+
+# Proguard Files
+proguard/
+app/debug/
+
+# Version Control
+.git/
+.svn/
+
+# Signing Files
+*.jks
+*.keystore
+.signing/
+
+# Google Services
+google-services.json
+GoogleService-Info.plist
+
+# Test Files
+app/src/**/test/
+app/src/**/androidTest/
+
+# Third Party Libraries
+.kotlintest/
+.kotlin/
+.android/
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# IDE Files
+*.ipr
+*.iws
+*.swp
+*.bak
+*.class
+*.dex
+*.so
+*.o
+*.a
+.classpath
+.project
+.settings/
+
+# Feature Module Specific
+feature/*/build/
+
+# Room Database
+**/schemas/

@@ -17,4 +17,8 @@ interface PokemonRepository {
     suspend fun isFavorite(id: Int): Boolean
     fun observeFavorite(id: Int): Flow<Boolean>
     fun observeAllFavorites(): Flow<List<Int>>
+    suspend fun getPokemonDetail(id: Int): Pokemon
+    suspend fun getFavoritePokemons(): List<Int>
+    suspend fun getAllPokemonTypes(): List<String>
+    suspend fun getPokemonsByTypes(types: List<String>, offset: Int, limit: Int): List<Pokemon>
 } 

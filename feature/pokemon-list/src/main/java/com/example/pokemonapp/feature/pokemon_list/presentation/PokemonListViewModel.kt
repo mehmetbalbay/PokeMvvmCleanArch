@@ -2,74 +2,368 @@ package com.example.pokemonapp.feature.pokemon_list.presentation
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.pokemonapp.feature.pokemon_list.domain.repository.PokemonRepository
+import com.example.pokemonapp.core.common.Resource
+import com.example.pokemonapp.feature.pokemon_list.domain.model.Pokemon
+import com.example.pokemonapp.feature.pokemon_list.domain.usecase.GetPokemonDetailUseCase
+import com.example.pokemonapp.feature.pokemon_list.domain.usecase.GetPokemonListUseCase
+import com.example.pokemonapp.feature.pokemon_list.domain.usecase.ObserveFavoritePokemonsUseCase
+import com.example.pokemonapp.feature.pokemon_list.domain.usecase.ToggleFavoritePokemonUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/**
+ * Pokemon Listesi için ViewModel.
+ * MVI mimarisini kullanarak durumu yönetir.
+ */
 @HiltViewModel
 class PokemonListViewModel @Inject constructor(
-    private val repository: PokemonRepository
+    private val getPokemonListUseCase: GetPokemonListUseCase,
+    private val getPokemonDetailUseCase: GetPokemonDetailUseCase,
+    private val toggleFavoritePokemonUseCase: ToggleFavoritePokemonUseCase,
+    private val observeFavoritePokemonsUseCase: ObserveFavoritePokemonsUseCase
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(PokemonListState())
     val state: StateFlow<PokemonListState> = _state.asStateFlow()
     
-    // Tip listesi için ayrı state
     private val _availableTypes = MutableStateFlow<List<String>>(emptyList())
     val availableTypes: StateFlow<List<String>> = _availableTypes.asStateFlow()
-    
-    // Sayfalama için değişkenler
-    private var currentPage = 0
-    private val pageSize = 20
-    private var hasMoreData = true
-    private var isLoading = false
-    
-    private var favoriteIds = setOf<Int>()
 
     init {
         loadPokemons()
         observeFavorites()
     }
-    
+
+    /**
+     * Pokemon listesini yükler
+     */
+    fun loadPokemons() {
+        viewModelScope.launch {
+            _state.update { it.copy(isLoading = true, error = null) }
+            
+            getPokemonListUseCase(offset = 0, limit = _state.value.limit)
+                .catch { e ->
+                    _state.update { it.copy(
+                        isLoading = false,
+                        error = "Pokemon yüklenirken hata oluştu: ${e.message}",
+                        isEmpty = true
+                    )}
+                }
+                .collectLatest { result ->
+                    when (result) {
+                        is Resource.Loading -> {
+                            _state.update { it.copy(isLoading = true) }
+                        }
+                        is Resource.Success -> {
+                            val pokemons = result.data?.pokemons ?: emptyList()
+                            _state.update { it.copy(
+                                pokemons = pokemons,
+                                isLoading = false,
+                                currentOffset = _state.value.limit,
+                                totalCount = result.data?.count ?: 0,
+                                hasMoreItems = (_state.value.limit < (result.data?.count ?: 0)),
+                                isEmpty = pokemons.isEmpty()
+                            )}
+                            
+                            // Tip listesini güncelle
+                            updateAvailableTypes()
+                            
+                            applyFilters()
+                        }
+                        is Resource.Error -> {
+                            _state.update { it.copy(
+                                isLoading = false,
+                                error = result.message ?: "Bilinmeyen bir hata oluştu",
+                                isEmpty = true
+                            )}
+                        }
+                        is Resource.Empty -> {
+                            _state.update { it.copy(
+                                isLoading = false,
+                                isEmpty = true,
+                                error = null
+                            )}
+                        }
+                    }
+                }
+        }
+    }
+
+    /**
+     * Daha fazla Pokemon yükler (sayfalama)
+     */
+    fun loadMorePokemons() {
+        val currentState = _state.value
+        
+        if (currentState.isLoadingMore || !currentState.hasMoreItems) return
+        
+        // Herhangi bir filtreleme aktifse, daha fazla yükleme yapma
+        if (currentState.searchQuery.isNotEmpty() || 
+            currentState.selectedTypes.isNotEmpty() || 
+            currentState.showFavoritesOnly) {
+            return
+        }
+        
+        viewModelScope.launch {
+            _state.update { it.copy(isLoadingMore = true) }
+            
+            getPokemonListUseCase(offset = currentState.currentOffset, limit = currentState.limit)
+                .catch { e ->
+                    _state.update { it.copy(
+                        isLoadingMore = false,
+                        error = "Daha fazla Pokemon yüklenirken hata oluştu: ${e.message}"
+                    )}
+                }
+                .collectLatest { result ->
+                    when (result) {
+                        is Resource.Success -> {
+                            val newPokemons = result.data?.pokemons ?: emptyList()
+                            val updatedPokemons = currentState.pokemons + newPokemons
+                            
+                            _state.update { it.copy(
+                                pokemons = updatedPokemons,
+                                isLoadingMore = false,
+                                currentOffset = currentState.currentOffset + currentState.limit,
+                                hasMoreItems = (currentState.currentOffset + currentState.limit < (result.data?.count ?: 0))
+                            )}
+                            
+                            // Tip listesini güncelle
+                            updateAvailableTypes()
+                        }
+                        is Resource.Error -> {
+                            _state.update { it.copy(
+                                isLoadingMore = false,
+                                error = result.message
+                            )}
+                        }
+                        else -> {} // Loading ve Empty durumlarını burada ele almaya gerek yok
+                    }
+                }
+        }
+    }
+
+    /**
+     * Yenile
+     */
+    fun refresh() {
+        viewModelScope.launch {
+            _state.update { it.copy(
+                isRefreshing = true,
+                error = null
+            )}
+            
+            loadPokemons()
+            
+            _state.update { it.copy(isRefreshing = false) }
+        }
+    }
+
+    /**
+     * Favorileri gözlemler
+     */
     private fun observeFavorites() {
         viewModelScope.launch {
-            repository.observeAllFavorites().collectLatest { favoriteIdList ->
-                val newFavoriteIds = favoriteIdList.toSet()
-                
-                // Eğer favorilerde değişiklik yoksa erken çıkış
-                if (newFavoriteIds == favoriteIds) return@collectLatest
-                
-                favoriteIds = newFavoriteIds
-                updatePokemonFavoriteStatus()
+            observeFavoritePokemonsUseCase().collectLatest { favoriteIds ->
+                _state.update { it.copy(favoriteIds = favoriteIds) }
+                updatePokemonFavoriteStatus(favoriteIds)
             }
         }
     }
-    
-    private fun updatePokemonFavoriteStatus() {
-        val currentPokemons = _state.value.pokemons
-        if (currentPokemons.isEmpty()) return
+
+    /**
+     * Pokemonların favori durumunu günceller
+     */
+    private fun updatePokemonFavoriteStatus(favoriteIds: List<Int>) {
+        val updatedPokemons = _state.value.pokemons.map { pokemon ->
+            pokemon.copy(isFavorite = favoriteIds.contains(pokemon.id))
+        }
         
-        val updatedPokemons = currentPokemons.map { pokemon ->
-            val isFavorite = favoriteIds.contains(pokemon.id)
-            if (pokemon.isFavorite != isFavorite) {
-                pokemon.copy(isFavorite = isFavorite)
-            } else {
-                pokemon
+        _state.update { it.copy(pokemons = updatedPokemons) }
+    }
+
+    /**
+     * Pokemon'u favorilere ekler/çıkarır
+     */
+    fun toggleFavorite(id: Int) {
+        // Aynı Pokemon için işlem devam ediyorsa yeni istek atma
+        if (_state.value.favoriteActionInProgress.contains(id)) return
+        
+        // İşlem başladığını belirt
+        _state.update { currentState ->
+            currentState.copy(
+                favoriteActionInProgress = currentState.favoriteActionInProgress + id
+            )
+        }
+        
+        viewModelScope.launch {
+            toggleFavoritePokemonUseCase(id)
+                .catch { e ->
+                    _state.update { currentState ->
+                        currentState.copy(
+                            error = "Favori durumu güncellenirken hata oluştu: ${e.message}",
+                            favoriteActionInProgress = currentState.favoriteActionInProgress - id,
+                            favoriteActionMessage = "Favori işlemi başarısız oldu"
+                        )
+                    }
+                }
+                .collect { result ->
+                    when (result) {
+                        is Resource.Success -> {
+                            val message = if (result.data == true) {
+                                "Pokemon favorilere eklendi!"
+                            } else {
+                                "Pokemon favorilerden kaldırıldı!"
+                            }
+                            _state.update { currentState ->
+                                currentState.copy(
+                                    favoriteActionMessage = message,
+                                    favoriteActionInProgress = currentState.favoriteActionInProgress - id
+                                )
+                            }
+                        }
+                        is Resource.Error -> {
+                            _state.update { currentState ->
+                                currentState.copy(
+                                    error = result.message,
+                                    favoriteActionInProgress = currentState.favoriteActionInProgress - id,
+                                    favoriteActionMessage = "Favori işlemi başarısız oldu: ${result.message}"
+                                )
+                            }
+                        }
+                        else -> {
+                            // Loading ve Empty durumlarında favoriteActionInProgress durumunu güncelleme
+                            if (result !is Resource.Loading) {
+                                _state.update { currentState ->
+                                    currentState.copy(
+                                        favoriteActionInProgress = currentState.favoriteActionInProgress - id
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+        }
+    }
+
+    // Favori mesajını temizle
+    fun clearFavoriteMessage() {
+        _state.update { it.copy(favoriteActionMessage = null) }
+    }
+
+    /**
+     * Arama sorgusunu günceller
+     */
+    fun updateSearchQuery(query: String) {
+        _state.update { it.copy(searchQuery = query) }
+        applyFilters()
+    }
+
+    /**
+     * Seçili türü günceller
+     */
+    fun toggleTypeFilter(type: String) {
+        val currentSelectedTypes = _state.value.selectedTypes.toMutableList()
+        if (currentSelectedTypes.contains(type)) {
+            currentSelectedTypes.remove(type)
+        } else {
+            currentSelectedTypes.add(type)
+        }
+        
+        _state.update { it.copy(selectedTypes = currentSelectedTypes) }
+        applyFilters()
+    }
+    
+    /**
+     * Tip filtrelerini ayarlar
+     */
+    fun setTypeFilters(types: List<String>) {
+        _state.update { it.copy(selectedTypes = types) }
+        applyFilters()
+    }
+
+    /**
+     * Sadece favorileri gösterme durumunu değiştirir
+     */
+    fun toggleShowFavoritesOnly() {
+        _state.update { it.copy(showFavoritesOnly = !it.showFavoritesOnly) }
+        applyFilters()
+    }
+
+    /**
+     * Sıralama düzenini değiştirir
+     */
+    fun updateSortOrder(sortOrder: SortOrder) {
+        _state.update { it.copy(sortOrder = sortOrder) }
+        applyFilters()
+    }
+
+    /**
+     * Filtreleri uygula
+     */
+    private fun applyFilters() {
+        val currentState = _state.value
+        val allPokemons = currentState.pokemons
+        var filteredPokemons = allPokemons
+        
+        // Arama sorgusuna göre filtrele
+        if (currentState.searchQuery.isNotEmpty()) {
+            val lowerCaseQuery = currentState.searchQuery.lowercase()
+            filteredPokemons = filteredPokemons.filter { pokemon -> 
+                // İsim içinde arama
+                val nameMatch = pokemon.name.lowercase().contains(lowerCaseQuery)
+                // ID içinde arama
+                val idMatch = pokemon.id.toString().contains(lowerCaseQuery)
+                // Tip içinde arama
+                val typeMatch = pokemon.types.any { it.lowercase().contains(lowerCaseQuery) }
+                
+                nameMatch || idMatch || typeMatch
             }
         }
         
-        if (updatedPokemons != currentPokemons) {
-            _state.update { it.copy(pokemons = updatedPokemons) }
+        // Seçili türlere göre filtrele
+        if (currentState.selectedTypes.isNotEmpty()) {
+            // Eşleşen TÜM tiplere sahip Pokemonları filtrele
+            filteredPokemons = filteredPokemons.filter { pokemon ->
+                currentState.selectedTypes.all { selectedType ->
+                    pokemon.types.any { pokemonType ->
+                        pokemonType.equals(selectedType, ignoreCase = true)
+                    }
+                }
+            }
+        }
+        
+        // Sadece favorileri göster
+        if (currentState.showFavoritesOnly) {
+            filteredPokemons = filteredPokemons.filter { it.isFavorite }
+        }
+        
+        // Sıralama düzenine göre sırala
+        filteredPokemons = when (currentState.sortOrder) {
+            SortOrder.ID -> filteredPokemons.sortedBy { it.id }
+            SortOrder.NAME_ASC -> filteredPokemons.sortedBy { it.name }
+            SortOrder.NAME_DESC -> filteredPokemons.sortedByDescending { it.name }
+            SortOrder.TYPE -> filteredPokemons.sortedBy { it.types.firstOrNull() ?: "" }
+        }
+        
+        // Sonuçları yeni bir liste olarak ayarla
+        _state.update { currentState ->
+            currentState.copy(
+                filteredPokemons = filteredPokemons,
+                isEmpty = filteredPokemons.isEmpty() && !currentState.isLoading
+            )
         }
     }
     
-    // Pokemon verilerinden tip listesi oluştur
+    /**
+     * Pokemon verilerinden tip listesi oluştur
+     */
     private fun updateAvailableTypes() {
         val allTypes = _state.value.pokemons
             .flatMap { it.types }
@@ -77,157 +371,5 @@ class PokemonListViewModel @Inject constructor(
             .sorted()
         
         _availableTypes.value = allTypes
-    }
-
-    fun loadPokemons() {
-        // İşlem zaten devam ediyorsa veya daha fazla veri yoksa çık
-        if (isLoading || !hasMoreData) {
-            return
-        }
-        
-        // Herhangi bir filtreleme aktifse, yeni veri yükleme
-        val currentState = _state.value
-        if (currentState.searchQuery.isNotEmpty() || 
-            currentState.selectedType != null || 
-            currentState.showFavoritesOnly) {
-            return
-        }
-
-        viewModelScope.launch {
-            try {
-                isLoading = true
-                _state.update { it.copy(isLoading = true, error = null) }
-                
-                // Verileri çek
-                val response = repository.getPokemonsWithCount(currentPage * pageSize, pageSize)
-                val newPokemons = response.pokemons
-                val totalCount = response.count
-                
-                // Eğer yeni veri yoksa, daha fazla veri olmadığını işaretle ve çık
-                if (newPokemons.isEmpty()) {
-                    hasMoreData = false
-                    if (_state.value.pokemons.isEmpty()) {
-                        _state.update { it.copy(isLoading = false) }
-                    }
-                    return@launch
-                }
-                
-                // Pokemonları güncel favori durumlarıyla eşleştir
-                val updatedNewPokemons = newPokemons.map { pokemon ->
-                    pokemon.copy(isFavorite = favoriteIds.contains(pokemon.id))
-                }
-                
-                // Mevcut verileri al
-                val currentPokemons = _state.value.pokemons
-                
-                // Yeni verileri listeye ekle
-                val combinedPokemons = currentPokemons + updatedNewPokemons
-                
-                // Toplam sayı ile karşılaştırarak daha fazla veri olup olmadığını kontrol et
-                val nextOffset = (currentPage + 1) * pageSize
-                hasMoreData = nextOffset < totalCount
-                
-                // Sayfa sayısını artır
-                currentPage++
-                
-                // UI'ı güncelle
-                _state.update { it.copy(pokemons = combinedPokemons, isLoading = false) }
-                
-                // Tip listesini güncelle
-                updateAvailableTypes()
-                
-            } catch (e: Exception) {
-                _state.update { it.copy(error = e.message ?: "Bilinmeyen bir hata oluştu", isLoading = false) }
-            } finally {
-                isLoading = false
-            }
-        }
-    }
-
-    fun updateSearchQuery(query: String) {
-        // Eğer daha önce bir arama yokken yeni bir arama başlatılıyorsa,
-        // arama yaparken sayfalama durumunu askıya al
-        val isNewSearch = _state.value.searchQuery.isEmpty() && query.isNotEmpty()
-        
-        _state.update { it.copy(searchQuery = query) }
-        
-        if (isNewSearch) {
-            // Mevcut filtrelenmiş listeyi oluştur ve göster
-            applyFilters()
-        } else if (query.isEmpty()) {
-            // Arama temizlendiğinde mevcut listeyi göster, sayfalama devam edebilir
-            _state.update { it.copy(
-                pokemons = _state.value.pokemons
-            ) }
-        } else {
-            // Arama değiştiğinde mevcut filtrelenmiş listeyi güncelle
-            applyFilters()
-        }
-    }
-
-    fun updateSelectedType(type: String?) {
-        _state.update { it.copy(selectedType = type) }
-        
-        // Tip değiştiğinde mevcut listeyi filtrele, yeni veri çekme
-        applyFilters()
-    }
-
-    fun toggleFavoritesOnly() {
-        _state.update { it.copy(showFavoritesOnly = !it.showFavoritesOnly) }
-        
-        // Favorileri değiştirince mevcut listeyi filtrele, yeni veri çekme
-        applyFilters()
-    }
-
-    fun updateSortOrder(sortOrder: SortOrder) {
-        _state.update { it.copy(sortOrder = sortOrder) }
-        
-        // Sıralama değiştiğinde mevcut listeyi filtrele, yeni veri çekme
-        applyFilters()
-    }
-    
-    // Mevcut listedeki pokemonları filtrele ve göster
-    private fun applyFilters() {
-        // Filtre işlemini UI thread'inde değil, coroutine içinde yapalım
-        viewModelScope.launch {
-            // Filtreleme zaten Screen tarafında yapılıyor olsa da, burada da yapabiliriz
-            // Bu şekilde, ViewModel seviyesinde filtre kontrolleri de olur
-            // Ancak bu projede, filtreleme/sıralama işlemleri ekran tarafında yapıldığı için
-            // bu fonksiyon şu an için bir şey yapmıyor.
-            // İleride bu fonksiyonu genişletip, filtreleme mantığını ViewModel'e taşıyabilirsiniz.
-            
-            // Not: Değişiklik yapmadan state'i güncellemek, gereksiz render'lara neden olabilir
-            // Bu nedenle işlem yapmıyoruz.
-        }
-    }
-
-    fun toggleFavorite(pokemonId: Int) {
-        viewModelScope.launch {
-            val isFavorite = repository.toggleFavorite(pokemonId)
-            // Not: Artık favori değişiklikleri observeFavorites() metoduyla izleniyor
-            // Ancak UI'ı hemen güncellemek için burada da düzenleme yapıyoruz
-            _state.update { currentState ->
-                currentState.copy(
-                    pokemons = currentState.pokemons.map { pokemon ->
-                        if (pokemon.id == pokemonId) {
-                            pokemon.copy(isFavorite = isFavorite)
-                        } else {
-                            pokemon
-                        }
-                    }
-                )
-            }
-        }
-    }
-
-    fun refresh() {
-        currentPage = 0
-        hasMoreData = true
-        _state.update { it.copy(pokemons = emptyList(), isLoading = true) }
-        loadPokemons()
-    }
-    
-    fun loadMorePokemons() {
-        loadPokemons()
     }
 } 

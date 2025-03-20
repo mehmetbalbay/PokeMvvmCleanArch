@@ -15,10 +15,12 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-data class PokemonDetailUiState(
-    val pokemon: PokemonDetail? = null,
+data class PokemonDetailState(
+    val pokemonDetail: PokemonDetail? = null,
     val isLoading: Boolean = false,
-    val error: String? = null
+    val error: String? = null,
+    val favoriteActionInProgress: Boolean = false,
+    val favoriteActionMessage: String? = null
 )
 
 @HiltViewModel
@@ -28,8 +30,8 @@ class PokemonDetailViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(PokemonDetailUiState(isLoading = true))
-    val uiState: StateFlow<PokemonDetailUiState> = _uiState.asStateFlow()
+    private val _state = MutableStateFlow(PokemonDetailState(isLoading = true))
+    val state: StateFlow<PokemonDetailState> = _state.asStateFlow()
 
     private val pokemonId: Int = checkNotNull(savedStateHandle["pokemonId"])
 
@@ -38,20 +40,20 @@ class PokemonDetailViewModel @Inject constructor(
         observeFavoriteStatus()
     }
 
-    private fun loadPokemonDetail() {
+    fun loadPokemonDetail() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, error = null) }
+            _state.update { it.copy(isLoading = true, error = null) }
             try {
                 val pokemonDetail = getPokemonDetailUseCase(pokemonId)
-                _uiState.update {
+                _state.update {
                     it.copy(
-                        pokemon = pokemonDetail,
+                        pokemonDetail = pokemonDetail,
                         isLoading = false,
                         error = null
                     )
                 }
             } catch (e: Exception) {
-                _uiState.update {
+                _state.update {
                     it.copy(
                         isLoading = false,
                         error = e.message ?: "Pokémon detayları yüklenirken bir hata oluştu"
@@ -64,9 +66,16 @@ class PokemonDetailViewModel @Inject constructor(
     private fun observeFavoriteStatus() {
         viewModelScope.launch {
             repository.observeFavorite(pokemonId).collectLatest { isFavorite ->
-                _uiState.update { currentState ->
-                    val updatedPokemon = currentState.pokemon?.copy(isFavorite = isFavorite)
-                    currentState.copy(pokemon = updatedPokemon)
+                _state.update { currentState ->
+                    val updatedPokemon = currentState.pokemonDetail?.copy(isFavorite = isFavorite)
+                    currentState.copy(
+                        pokemonDetail = updatedPokemon,
+                        // Favori aksiyon mesajının sınırlı süreyle gösterilmesini sağla
+                        favoriteActionMessage = if (currentState.favoriteActionMessage != null && currentState.favoriteActionInProgress) {
+                            if (isFavorite) "Pokémon favorilere eklendi" else "Pokémon favorilerden çıkarıldı"
+                        } else null,
+                        favoriteActionInProgress = false
+                    )
                 }
             }
         }
@@ -74,11 +83,22 @@ class PokemonDetailViewModel @Inject constructor(
 
     fun toggleFavorite() {
         viewModelScope.launch {
-            _uiState.value.pokemon?.let { pokemon ->
+            _state.value.pokemonDetail?.let { pokemon ->
+                // Aynı anda birden fazla istek oluşmasını önlemek için
+                if (_state.value.favoriteActionInProgress) return@launch
+                
+                // Aksiyon sırasında durumu güncelle
+                _state.update { 
+                    it.copy(
+                        favoriteActionInProgress = true,
+                        favoriteActionMessage = "Favori durumu güncelleniyor..."
+                    )
+                }
+                
                 // Optimistik UI güncellemesi
-                _uiState.update { 
+                _state.update { 
                     val updatedPokemon = pokemon.copy(isFavorite = !pokemon.isFavorite)
-                    it.copy(pokemon = updatedPokemon)
+                    it.copy(pokemonDetail = updatedPokemon)
                 }
                 
                 try {
@@ -87,11 +107,13 @@ class PokemonDetailViewModel @Inject constructor(
                     // Not: Artık observe ettiğimiz için, veritabanı değiştiğinde Flow yoluyla tekrar güncellenecek
                 } catch (e: Exception) {
                     // Hata durumunda eski değere geri dön
-                    _uiState.update { 
-                        val revertedPokemon = _uiState.value.pokemon?.copy(isFavorite = pokemon.isFavorite)
+                    _state.update { 
+                        val revertedPokemon = _state.value.pokemonDetail?.copy(isFavorite = pokemon.isFavorite)
                         it.copy(
-                            pokemon = revertedPokemon,
-                            error = "Favori durumu güncellenirken bir hata oluştu"
+                            pokemonDetail = revertedPokemon,
+                            error = "Favori durumu güncellenirken bir hata oluştu",
+                            favoriteActionInProgress = false,
+                            favoriteActionMessage = "Favori işlemi başarısız oldu: ${e.message}"
                         )
                     }
                 }
@@ -101,5 +123,9 @@ class PokemonDetailViewModel @Inject constructor(
 
     fun refresh() {
         loadPokemonDetail()
+    }
+    
+    fun clearFavoriteMessage() {
+        _state.update { it.copy(favoriteActionMessage = null) }
     }
 } 
