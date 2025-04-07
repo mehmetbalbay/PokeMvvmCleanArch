@@ -16,6 +16,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 
 /**
@@ -80,4 +81,32 @@ fun EmptyStateContent(
             }
         }
     }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun EmptyStateContentPreview() {
+    EmptyStateContent(
+        message = "Hiç Pokemon bulunamadı.",
+        onAction = {},
+        actionText = "Yenile"
+    )
+}
+
+@Preview(showBackground = true)
+@Composable
+fun EmptyStateContentWithoutActionPreview() {
+    EmptyStateContent(
+        message = "Hiç Pokemon bulunamadı."
+    )
+}
+
+@Preview(showBackground = true, showSystemUi = true)
+@Composable
+fun FullScreenEmptyStatePreview() {
+    FullScreenEmptyState(
+        message = "Hiç Pokemon bulunamadı.",
+        onAction = {},
+        actionText = "Yenile"
+    )
 } 

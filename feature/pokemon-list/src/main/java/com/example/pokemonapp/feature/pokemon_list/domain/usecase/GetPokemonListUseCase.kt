@@ -27,7 +27,11 @@ class GetPokemonListUseCase @Inject constructor(
         try {
             emit(Resource.Loading())
             
+            println("GetPokemonListUseCase: offset=$offset, limit=$limit istendi")
+            
             val pokemonListResult = repository.getPokemonsWithCount(offset, limit)
+            
+            println("GetPokemonListUseCase: ${pokemonListResult.pokemons.size} Pokemon alındı, toplam: ${pokemonListResult.count}")
             
             if (pokemonListResult.pokemons.isEmpty()) {
                 emit(Resource.Empty("Pokemon bulunamadı"))
@@ -35,8 +39,10 @@ class GetPokemonListUseCase @Inject constructor(
                 emit(Resource.Success(pokemonListResult))
             }
         } catch (e: IOException) {
+            println("GetPokemonListUseCase: Ağ hatası: ${e.message}")
             emit(Resource.Error("Ağ hatası: Lütfen internet bağlantınızı kontrol edin."))
         } catch (e: Exception) {
+            println("GetPokemonListUseCase: Genel hata: ${e.message}")
             emit(Resource.Error("Bir hata oluştu: ${e.message ?: "Bilinmeyen bir hata"}"))
         }
     }

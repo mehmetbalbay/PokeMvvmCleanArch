@@ -16,79 +16,69 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
-// Pokémon uygulaması için özel renkler
-val PokemonRed = Color(0xFFFA5C5C)
-val PokemonRedDark = Color(0xFFE63E3E)
-val PokemonYellow = Color(0xFFFFD53E)
-val PokemonBlue = Color(0xFF52A9FF)
-val PokemonGreen = Color(0xFF8CD36A)
-
-private val LightColorScheme = lightColorScheme(
-    primary = PokemonRed,
-    onPrimary = Color.White,
-    primaryContainer = PokemonRed.copy(alpha = 0.8f),
-    onPrimaryContainer = Color.White,
-    
-    secondary = PokemonYellow,
-    onSecondary = Color.Black,
-    secondaryContainer = PokemonYellow.copy(alpha = 0.7f),
-    onSecondaryContainer = Color.Black,
-    
-    tertiary = PokemonBlue,
-    onTertiary = Color.White,
-    tertiaryContainer = PokemonBlue.copy(alpha = 0.7f),
-    onTertiaryContainer = Color.White,
-    
-    background = Color.White,
-    onBackground = Color(0xFF1A1C1E),
-    
-    surface = Color.White,
-    onSurface = Color(0xFF1A1C1E),
-    
-    surfaceVariant = Color(0xFFF3F3F3),
-    onSurfaceVariant = Color(0xFF43474E),
-    
-    error = Color(0xFFBA1A1A),
-    onError = Color.White,
-    
-    outline = Color(0xFF73777F)
+// Pokemon kart tiplerine göre renk paleti
+val PokemonTypeColors = mapOf(
+    "normal" to Color(0xFFA8A878),
+    "fire" to Color(0xFFFB6C6C),
+    "water" to Color(0xFF76BDFE),
+    "electric" to Color(0xFFFFD970),
+    "grass" to Color(0xFF48D0B0),
+    "ice" to Color(0xFF98D8D8),
+    "fighting" to Color(0xFFC03028),
+    "poison" to Color(0xFFA040A0),
+    "ground" to Color(0xFFE0C068),
+    "flying" to Color(0xFFA890F0),
+    "psychic" to Color(0xFFF85888),
+    "bug" to Color(0xFFA8B820),
+    "rock" to Color(0xFFB8A038),
+    "ghost" to Color(0xFF705898),
+    "dragon" to Color(0xFF7038F8),
+    "dark" to Color(0xFF705848),
+    "steel" to Color(0xFFB8B8D0),
+    "fairy" to Color(0xFFEE99AC)
 )
 
 private val DarkColorScheme = darkColorScheme(
-    primary = PokemonRed,
+    primary = Color(0xFF48D0B0),      // Bulbasaur rengi
     onPrimary = Color.White,
-    primaryContainer = PokemonRedDark,
+    primaryContainer = Color(0xFF2A9D8F),
     onPrimaryContainer = Color.White,
-    
-    secondary = PokemonYellow,
-    onSecondary = Color.Black,
-    secondaryContainer = PokemonYellow.copy(alpha = 0.5f),
-    onSecondaryContainer = Color.Black,
-    
-    tertiary = PokemonBlue,
+    secondary = Color(0xFFFB6C6C),    // Charmander rengi
+    onSecondary = Color.White,
+    secondaryContainer = Color(0xFFE76F51),
+    onSecondaryContainer = Color.White,
+    tertiary = Color(0xFF76BDFE),     // Squirtle rengi
     onTertiary = Color.White,
-    tertiaryContainer = PokemonBlue.copy(alpha = 0.5f),
+    tertiaryContainer = Color(0xFF457B9D),
     onTertiaryContainer = Color.White,
-    
-    background = Color(0xFF1A1C1E),
-    onBackground = Color(0xFFE2E2E6),
-    
-    surface = Color(0xFF111315),
-    onSurface = Color(0xFFE2E2E6),
-    
-    surfaceVariant = Color(0xFF222528),
-    onSurfaceVariant = Color(0xFFC3C7CF),
-    
-    error = Color(0xFFFFB4AB),
-    onError = Color(0xFF690005),
-    
-    outline = Color(0xFF8D9199)
+    background = Color(0xFF121212),
+    onBackground = Color.White,
+    surface = Color(0xFF1E1E1E),
+    onSurface = Color.White,
+)
+
+private val LightColorScheme = lightColorScheme(
+    primary = Color(0xFF48D0B0),      // Bulbasaur rengi
+    onPrimary = Color.White,
+    primaryContainer = Color(0xFFBEF3E8),
+    onPrimaryContainer = Color(0xFF0B5A4F),
+    secondary = Color(0xFFFB6C6C),    // Charmander rengi
+    onSecondary = Color.White,
+    secondaryContainer = Color(0xFFFFDAD6),
+    onSecondaryContainer = Color(0xFF410002),
+    tertiary = Color(0xFF76BDFE),     // Squirtle rengi
+    onTertiary = Color.White,
+    tertiaryContainer = Color(0xFFD3E4FF),
+    onTertiaryContainer = Color(0xFF001A41),
+    background = Color(0xFFFEF6E6),   // Yumuşak kremsi arka plan
+    onBackground = Color(0xFF1B1B1A),
+    surface = Color.White,
+    onSurface = Color(0xFF1B1B1A),
 )
 
 @Composable
 fun PokemonAppTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    // Dinamik renk, Android 12+ için bir özelliktir
     dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
@@ -100,20 +90,25 @@ fun PokemonAppTheme(
         darkTheme -> DarkColorScheme
         else -> LightColorScheme
     }
-    
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
             window.statusBarColor = colorScheme.primary.toArgb()
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = false
+            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
         }
     }
 
     MaterialTheme(
         colorScheme = colorScheme,
         typography = Typography,
-        shapes = Shapes,
+        shapes = AppShapes,
         content = content
     )
+}
+
+// Pokemon tipi için arka plan rengi seçici fonksiyon
+@Composable
+fun getPokemonTypeColor(type: String): Color {
+    return PokemonTypeColors[type.lowercase()] ?: MaterialTheme.colorScheme.primary
 } 

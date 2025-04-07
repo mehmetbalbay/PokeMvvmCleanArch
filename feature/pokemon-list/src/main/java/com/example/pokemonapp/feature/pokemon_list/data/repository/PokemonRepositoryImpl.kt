@@ -55,7 +55,10 @@ class PokemonRepositoryImpl @Inject constructor(
 
     override suspend fun getPokemonsWithCount(offset: Int, limit: Int): PokemonListResult = coroutineScope {
         try {
+            println("Repository: getPokemonsWithCount çağrıldı - offset=$offset, limit=$limit")
             val response = remoteDataSource.getPokemons(offset = offset, limit = limit)
+            
+            println("Repository: API yanıtı - toplam sayı=${response.count}, alınan=${response.results.size}, sonraki=${response.next}")
             
             val pokemonList = response.results
             val deferredTypes = List(pokemonList.size) { index ->
@@ -86,11 +89,14 @@ class PokemonRepositoryImpl @Inject constructor(
                 )
             }
             
+            println("Repository: Dönüştürülen pokemonlar=${pokemons.size}, ID aralığı=${pokemons.firstOrNull()?.id} - ${pokemons.lastOrNull()?.id}")
+            
             return@coroutineScope PokemonListResult(
                 pokemons = pokemons,
                 count = response.count
             )
         } catch (e: Exception) {
+            println("Repository: Hata - ${e.message}")
             e.printStackTrace()
             throw e
         }
@@ -134,14 +140,23 @@ class PokemonRepositoryImpl @Inject constructor(
      * Pokemon tiplerinin listesini döndürür
      */
     override suspend fun getAllPokemonTypes(): List<String> {
-        // API'den tiplerini alma işlemi burada olacak
-        
-        // Örnek tip listesi
-        return listOf(
-            "bug", "dark", "dragon", "electric", "fairy", "fighting",
-            "fire", "flying", "ghost", "grass", "ground", "ice",
-            "normal", "poison", "psychic", "rock", "steel", "water"
-        )
+        println("### Repository: getAllPokemonTypes çağrıldı")
+        try {
+            // API'den tip bilgilerini alma girişimi
+            // Gerçek bir API çağrısı yapılması gerekiyor
+            val typeList = listOf(
+                "bug", "dark", "dragon", "electric", "fairy", "fighting",
+                "fire", "flying", "ghost", "grass", "ground", "ice",
+                "normal", "poison", "psychic", "rock", "steel", "water"
+            )
+            
+            println("### Repository: ${typeList.size} Pokemon tipi döndürüldü: $typeList")
+            return typeList
+        } catch (e: Exception) {
+            println("### Repository: Pokemon tipleri alınırken hata oluştu - ${e.message}")
+            // Hata durumunda boş liste döndür
+            return emptyList()
+        }
     }
 
     /**

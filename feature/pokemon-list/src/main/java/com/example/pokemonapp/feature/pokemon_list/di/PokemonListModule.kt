@@ -30,7 +30,7 @@ object PokemonListDataModule {
     fun providePokemonApi(retrofit: Retrofit): PokemonApi {
         return retrofit.create(PokemonApi::class.java)
     }
-
+    
     @Provides
     @Singleton
     fun provideFavoritePokemonDao(database: PokemonDatabase): FavoritePokemonDao {

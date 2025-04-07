@@ -14,10 +14,27 @@ class PokemonRemoteDataSourceImpl @Inject constructor(
 ) : PokemonRemoteDataSource {
     
     override suspend fun getPokemons(offset: Int, limit: Int): PokemonResponse {
-        return api.getPokemons(offset, limit)
+        println("API'ye istek gönderiliyor: offset=$offset, limit=$limit")
+        try {
+            val response = api.getPokemons(offset, limit)
+            println("API yanıtı başarılı: ${response.results.size} Pokemon, toplam: ${response.count}")
+            println("Sonraki sayfa: ${response.next}")
+            return response
+        } catch (e: Exception) {
+            println("API hatası: ${e.message}")
+            throw e
+        }
     }
     
     override suspend fun getPokemonDetail(id: Int): PokemonDetailDto {
-        return api.getPokemonDetail(id)
+        println("Pokemon detayı isteniyor: id=$id")
+        try {
+            val detail = api.getPokemonDetail(id)
+            println("Pokemon detayı alındı: ${detail.name}")
+            return detail
+        } catch (e: Exception) {
+            println("Pokemon detayı alınamadı: ${e.message}")
+            throw e
+        }
     }
 } 

@@ -33,4 +33,5 @@ include(":feature:pokemon-search")
 include(":feature:pokemon-types")
 include(":feature:pokemon-abilities")
 include(":feature:pokemon-moves")
+include(":feature:pokemon-teams")
  

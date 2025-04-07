@@ -1,5 +1,6 @@
 package com.example.pokemonapp.feature.pokemon_detail.presentation
 
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -7,814 +8,475 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
-import coil.compose.AsyncImagePainter
-import coil.compose.rememberAsyncImagePainter
 import coil.request.ImageRequest
-import coil.size.Size
+import com.example.pokemonapp.core.ui.components.PokemonTypeChip
+import com.example.pokemonapp.core.ui.components.StatsSection
+import com.example.pokemonapp.core.ui.theme.PokemonDetailCardShape
+import com.example.pokemonapp.core.ui.theme.getPokemonTypeColor
 import com.example.pokemonapp.feature.pokemon_detail.domain.model.PokemonDetail
-import android.graphics.drawable.BitmapDrawable
-import androidx.palette.graphics.Palette
-import androidx.compose.ui.text.style.TextOverflow
+import com.example.pokemonapp.feature.pokemon_detail.domain.model.Stat
+import com.example.pokemonapp.feature.pokemon_detail.presentation.PokemonDetailUiState.*
+
+@Composable
+fun PokemonDetailRoute(
+    onBackClick: () -> Unit,
+    viewModel: PokemonDetailViewModel = hiltViewModel()
+) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    
+    PokemonDetailScreen(
+        uiState = uiState,
+        onBackClick = onBackClick,
+        onRetry = viewModel::loadPokemonDetail,
+        onToggleFavorite = viewModel::toggleFavorite
+    )
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PokemonDetailScreen(
-    viewModel: PokemonDetailViewModel = hiltViewModel(),
-    onBackClick: () -> Unit
+    uiState: PokemonDetailUiState,
+    onBackClick: () -> Unit,
+    onRetry: () -> Unit,
+    onToggleFavorite: () -> Unit
 ) {
-    val state by viewModel.state.collectAsStateWithLifecycle()
-    
-    // Snackbar gösterimi için ekleyelim
     val snackbarHostState = remember { SnackbarHostState() }
     
-    // Favori mesajını göster
-    LaunchedEffect(state.favoriteActionMessage) {
-        state.favoriteActionMessage?.let { message ->
+    // Favori işlemi mesajı
+    LaunchedEffect(uiState) {
+        if (uiState is Success && uiState.favoriteActionMessage != null) {
             snackbarHostState.showSnackbar(
-                message = message,
+                message = uiState.favoriteActionMessage,
                 duration = SnackbarDuration.Short
             )
-            // Mesajı gösterdikten sonra temizle
-            viewModel.clearFavoriteMessage()
         }
     }
-    
+
     Scaffold(
-        snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
-    ) { paddingValues ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-        ) {
-            when {
-                state.isLoading -> {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .fillMaxHeight(),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(60.dp),
-                            strokeWidth = 4.dp,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(modifier = Modifier.height(24.dp))
-                        Text(
-                            text = "Pokemon yükleniyor...",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+        snackbarHost = { SnackbarHost(snackbarHostState) }
+    ) { innerPadding ->
+        Box(modifier = Modifier.padding(innerPadding)) {
+            when (uiState) {
+                is Loading -> {
+                    LoadingState()
                 }
-                state.error != null -> {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(32.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Text(
-                            text = state.error ?: "Bilinmeyen hata",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.error,
-                            textAlign = TextAlign.Center
-                        )
-                        Spacer(modifier = Modifier.height(24.dp))
-                        Button(
-                            onClick = { viewModel.loadPokemonDetail() },
-                            shape = RoundedCornerShape(24.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary
-                            ),
-                            elevation = ButtonDefaults.buttonElevation(
-                                defaultElevation = 4.dp,
-                                pressedElevation = 8.dp
-                            )
-                        ) {
-                            Text(
-                                "Tekrar Dene",
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
-                    }
-                }
-                state.pokemonDetail != null -> {
-                    val pokemonDetail = state.pokemonDetail!!
-                    
-                    PokemonDetailContent(
-                        pokemonDetail = pokemonDetail,
-                        onBackClick = onBackClick,
-                        onFavoriteClick = { viewModel.toggleFavorite() },
-                        isFavoriteActionInProgress = state.favoriteActionInProgress
+                is Error -> {
+                    ErrorState(
+                        message = uiState.message,
+                        onRetry = onRetry
                     )
                 }
-            }
-        }
-    }
-}
-
-@Composable
-fun PokemonDetailContent(
-    pokemonDetail: PokemonDetail,
-    onBackClick: () -> Unit,
-    onFavoriteClick: () -> Unit,
-    isFavoriteActionInProgress: Boolean
-) {
-    // Varsayılan renk seçimi (dinamik olarak oluşturulan rastgele bir renk)
-    val defaultColor = remember(pokemonDetail.id) {
-        Color(
-            red = (120..200).random(),
-            green = (120..200).random(),
-            blue = (120..200).random()
-        )
-    }
-    
-    // Dominant renk ve tip renk map'i
-    val dominantColor = remember { mutableStateOf(defaultColor) }
-    val typeColors = remember {
-        mutableStateMapOf<String, Color>()
-    }
-    
-    // Her tip için daha önce renk atanmış mı kontrol eder
-    val typeColorAssigned = remember {
-        mutableStateMapOf<String, Boolean>()
-    }
-    
-    val context = LocalContext.current
-    
-    // Palette'ten çıkarılan renk varyasyonları
-    val vibrantColor = remember { mutableStateOf<Color?>(null) }
-    val lightVibrantColor = remember { mutableStateOf<Color?>(null) }
-    val darkVibrantColor = remember { mutableStateOf<Color?>(null) }
-    val mutedColor = remember { mutableStateOf<Color?>(null) }
-    
-    val painter = rememberAsyncImagePainter(
-        model = ImageRequest.Builder(context)
-            .data(pokemonDetail.imageUrl)
-            .size(Size.ORIGINAL)
-            .build()
-    )
-    
-    // Renkleri palette API ile çıkar
-    LaunchedEffect(painter.state) {
-        try {
-            if (painter.state is AsyncImagePainter.State.Success) {
-                val drawable = (painter.state as AsyncImagePainter.State.Success).result.drawable
-                if (drawable is BitmapDrawable && drawable.bitmap != null) {
-                    Palette.from(drawable.bitmap).generate { palette ->
-                        palette?.dominantSwatch?.rgb?.let { colorValue ->
-                            val extractedColor = Color(colorValue)
-                            dominantColor.value = extractedColor
-                            
-                            pokemonDetail.types.forEach { type ->
-                                if (typeColorAssigned[type] != true) {
-                                    typeColors[type] = extractedColor
-                                    typeColorAssigned[type] = true
-                                }
-                            }
-                        }
-                        
-                        palette?.vibrantSwatch?.rgb?.let {
-                            vibrantColor.value = Color(it)
-                        }
-                        palette?.lightVibrantSwatch?.rgb?.let {
-                            lightVibrantColor.value = Color(it)
-                        }
-                        palette?.darkVibrantSwatch?.rgb?.let {
-                            darkVibrantColor.value = Color(it)
-                        }
-                        palette?.mutedSwatch?.rgb?.let {
-                            mutedColor.value = Color(it)
-                        }
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            // Hata durumunda varsayılan rengi kullan
-        }
-    }
-    
-    // Farklı renk varyasyonlarını da kullanalım
-    LaunchedEffect(painter.state) {
-        try {
-            if (painter.state is AsyncImagePainter.State.Success) {
-                val drawable = (painter.state as AsyncImagePainter.State.Success).result.drawable
-                if (drawable is BitmapDrawable && drawable.bitmap != null) {
-                    Palette.from(drawable.bitmap).generate { palette ->
-                        palette?.let { p ->
-                            pokemonDetail.types.forEachIndexed { index, type ->
-                                if (typeColorAssigned[type] != true) {
-                                    val color = when(index % 3) {
-                                        0 -> p.vibrantSwatch?.rgb
-                                        1 -> p.lightVibrantSwatch?.rgb
-                                        else -> p.darkVibrantSwatch?.rgb
-                                    } ?: p.dominantSwatch?.rgb
-                                    
-                                    color?.let {
-                                        typeColors[type] = Color(it)
-                                        typeColorAssigned[type] = true
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            // Hata durumunda dominantColor'ı kullanmaya devam et
-        }
-    }
-    
-    // Tip için varsayılan renkler
-    LaunchedEffect(key1 = Unit) {
-        pokemonDetail.types.forEach { type ->
-            if (typeColorAssigned[type] != true) {
-                typeColors[type] = Color(
-                    red = (30..240).random(),
-                    green = (30..240).random(),
-                    blue = (30..240).random()
-                )
-                typeColorAssigned[type] = true
-            }
-        }
-    }
-    
-    // Metin için kontrast rengi hesapla (YIQ formülü)
-    val r = dominantColor.value.red * 255
-    val g = dominantColor.value.green * 255
-    val b = dominantColor.value.blue * 255
-    val yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000
-    val textColor = if (yiq >= 128) {
-        Color.Black.copy(alpha = 0.8f)
-    } else {
-        Color.White
-    }
-    
-    // Arka plan gradyanı
-    val backgroundGradient = Brush.verticalGradient(
-        colors = listOf(
-            dominantColor.value,
-            dominantColor.value.copy(alpha = 0.7f),
-            dominantColor.value.copy(alpha = 0.4f),
-            MaterialTheme.colorScheme.surface
-        )
-    )
-    
-    // Tüm ekranı kapsayan scroll
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.surface)
-    ) {
-        // Scroll edilebilir içerik
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-        ) {
-            // Üst banner (gradyan arka plan)
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(300.dp)
-                    .background(backgroundGradient)
-            ) {
-                // Navigasyon butonları
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    IconButton(
-                        onClick = onBackClick,
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.7f))
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.ArrowBack,
-                            contentDescription = "Geri",
-                            tint = dominantColor.value,
-                            modifier = Modifier.size(28.dp)
-                        )
-                    }
+                is Success -> {
+                    val pokemon = uiState.pokemon
+                    val dominantType = pokemon.types.firstOrNull() ?: "normal"
+                    val typeColor = getPokemonTypeColor(dominantType)
+                    val gradientBackground = Brush.verticalGradient(
+                        colors = listOf(
+                            typeColor,
+                            typeColor.copy(alpha = 0.8f),
+                            MaterialTheme.colorScheme.background
+                        ),
+                        startY = 0f,
+                        endY = 1000f
+                    )
                     
-                    IconButton(
-                        onClick = onFavoriteClick,
-                        enabled = !isFavoriteActionInProgress,
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f))
-                            .padding(4.dp)
-                    ) {
-                        if (isFavoriteActionInProgress) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(24.dp),
-                                strokeWidth = 2.dp,
-                                color = if (pokemonDetail.isFavorite) Color.Red else dominantColor.value
-                            )
-                        } else {
-                            Icon(
-                                imageVector = if (pokemonDetail.isFavorite) {
-                                    Icons.Default.Favorite
-                                } else {
-                                    Icons.Default.FavoriteBorder
-                                },
-                                contentDescription = if (pokemonDetail.isFavorite) {
-                                    "Favorilerden Çıkar"
-                                } else {
-                                    "Favorilere Ekle"
-                                },
-                                tint = if (pokemonDetail.isFavorite) Color.Red else dominantColor.value,
-                                modifier = Modifier.size(24.dp)
-                            )
-                        }
-                    }
-                }
-                
-                // Pokemon resmi (büyük ve merkezi)
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .offset(y = 100.dp),
-                    contentAlignment = Alignment.Center
-                ) {
                     Box(
                         modifier = Modifier
-                            .size(220.dp)
-                            .clip(CircleShape)
-                            .background(
-                                MaterialTheme.colorScheme.surface.copy(alpha = 0.7f)
-                            )
-                            .padding(10.dp),
-                        contentAlignment = Alignment.Center
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.background)
                     ) {
-                        AsyncImage(
-                            model = pokemonDetail.imageUrl,
-                            contentDescription = pokemonDetail.name,
-                            modifier = Modifier.size(180.dp)
-                        )
-                    }
-                }
-            }
-            
-            // Pokemon adı ve ID'si
-            Spacer(modifier = Modifier.height(80.dp))
-            
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-                    .padding(horizontal = 24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-                    text = pokemonDetail.name.replaceFirstChar { it.uppercase() },
-                    style = MaterialTheme.typography.headlineLarge,
-                    color = dominantColor.value,
-                    fontWeight = FontWeight.Bold
-                )
-                
-                Text(
-                    text = "#${pokemonDetail.id.toString().padStart(3, '0')}",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(bottom = 16.dp)
-                )
-                
-                // Tip etiketleri
-                Row(
-                    modifier = Modifier
-                        .padding(vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    pokemonDetail.types.forEach { type ->
-                        val typeColor = typeColors[type] ?: dominantColor.value
-                        
-                        Card(
-                            shape = RoundedCornerShape(24.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = typeColor
-                            ),
-                            elevation = CardDefaults.cardElevation(
-                                defaultElevation = 4.dp
-                            )
-                        ) {
-                            Text(
-                                text = type.replaceFirstChar { it.uppercase() },
-                                modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
-                                color = Color.White,
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-                }
-            }
-            
-            // Ana içerik - tüm detaylar kartlarda
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp)
-            ) {
-                // 1. Fiziksel özellikler kartı
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 12.dp),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surface
-                    ),
-                    elevation = CardDefaults.cardElevation(
-                        defaultElevation = 4.dp
-                    )
-                ) {
-                    Column(
-                        modifier = Modifier.padding(24.dp)
-                    ) {
-                        // Başlık
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(bottom = 16.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .clip(CircleShape)
-                                    .background(dominantColor.value.copy(alpha = 0.2f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = "📊",
-                                    style = MaterialTheme.typography.titleMedium
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(12.dp))
-            Text(
-                                text = "Fiziksel Özellikler",
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Bold,
-                                color = dominantColor.value
-                            )
-                        }
-                        
-                        // Bilgiler
-                        InfoRow(
-                            title = "Boy", 
-                            value = "${pokemonDetail.height / 10.0} m",
-                            accentColor = vibrantColor.value ?: dominantColor.value
-                        )
-                        
-                        Divider(
+                        // Arka plan gradient
+                        Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 8.dp),
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                                .height(300.dp)
+                                .background(gradientBackground)
                         )
                         
-                        InfoRow(
-                            title = "Ağırlık", 
-                            value = "${pokemonDetail.weight / 10.0} kg",
-                            accentColor = vibrantColor.value ?: dominantColor.value
-                        )
-                        
-                        Divider(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 8.dp),
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                        )
-                        
-                        InfoRow(
-                            title = "Yetenekler", 
-                            value = pokemonDetail.abilities.joinToString(", "),
-                            accentColor = vibrantColor.value ?: dominantColor.value
-                        )
-                    }
-                }
-                
-                // 2. İstatistikler kartı
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 12.dp),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surface
-                    ),
-                    elevation = CardDefaults.cardElevation(
-                        defaultElevation = 4.dp
-                    )
-                ) {
-                    Column(
-                        modifier = Modifier.padding(24.dp)
-                    ) {
-                        // Başlık
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(bottom = 16.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .clip(CircleShape)
-                                    .background(dominantColor.value.copy(alpha = 0.2f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-            Text(
-                                    text = "📈",
-                                    style = MaterialTheme.typography.titleMedium
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(12.dp))
-            Text(
-                text = "İstatistikler",
-                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Bold,
-                                color = dominantColor.value
-                            )
-                        }
-                        
-                        // Stat çubukları
+                        // İçerik
                         Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 8.dp),
-                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                            modifier = Modifier.fillMaxSize()
                         ) {
-                            pokemonDetail.stats.forEach { stat ->
-                                // Stat başına farklı renk varyasyonları kullan
-                                val statColor = when(stat.name) {
-                                    "hp" -> darkVibrantColor.value
-                                    "attack" -> vibrantColor.value
-                                    "defense" -> lightVibrantColor.value
-                                    "special-attack" -> mutedColor.value
-                                    "special-defense" -> vibrantColor.value?.copy(alpha = 0.7f)
-                                    "speed" -> darkVibrantColor.value?.copy(alpha = 0.7f)
-                                    else -> dominantColor.value
-                                } ?: dominantColor.value
-                                
-                                StatBar(
-                                    statName = when (stat.name) {
-                                        "hp" -> "HP"
-                                        "attack" -> "Atak"
-                                        "defense" -> "Savunma"
-                                        "special-attack" -> "Özel Atak"
-                                        "special-defense" -> "Özel Savunma"
-                                        "speed" -> "Hız"
-                                        else -> stat.name
-                                    },
-                                    statValue = stat.value,
-                                    maxValue = 255,
-                                    color = statColor
+                            // Başlık çubuğu
+                            TopAppBar(
+                                title = {},
+                                navigationIcon = {
+                                    IconButton(
+                                        onClick = onBackClick,
+                                        modifier = Modifier
+                                            .padding(8.dp)
+                                            .clip(CircleShape)
+                                            .background(Color.White.copy(alpha = 0.5f))
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                            contentDescription = "Geri",
+                                            tint = Color.Black
+                                        )
+                                    }
+                                },
+                                actions = {
+                                    IconButton(
+                                        onClick = onToggleFavorite,
+                                        modifier = Modifier
+                                            .padding(8.dp)
+                                            .clip(CircleShape)
+                                            .background(Color.White.copy(alpha = 0.5f))
+                                            .size(40.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = if (pokemon.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                            contentDescription = if (pokemon.isFavorite) "Favorilerden çıkar" else "Favorilere ekle",
+                                            tint = if (pokemon.isFavorite) Color.Red else Color.Black
+                                        )
+                                    }
+                                },
+                                colors = TopAppBarDefaults.topAppBarColors(
+                                    containerColor = Color.Transparent,
+                                    navigationIconContentColor = Color.White
                                 )
-                            }
-                        }
-                    }
-                }
-                
-                // 3. Hareketler kartı
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 12.dp),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surface
-                    ),
-                    elevation = CardDefaults.cardElevation(
-                        defaultElevation = 4.dp
-                    )
-                ) {
-                    Column(
-                        modifier = Modifier.padding(24.dp)
-                    ) {
-                        // Başlık
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(bottom = 16.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .clip(CircleShape)
-                                    .background(dominantColor.value.copy(alpha = 0.2f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = "⚡",
-                                    style = MaterialTheme.typography.titleMedium
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(12.dp))
-            Text(
-                                text = "Hareketler",
-                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Bold,
-                                color = dominantColor.value
                             )
-                        }
-                        
-                        // Hareketler listesi
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 8.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            val displayMoves = pokemonDetail.moves.take(12)
-                            val columns = 2
-                            val rows = (displayMoves.size + columns - 1) / columns
                             
-                            for (i in 0 until rows) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            // Pokemon görüntüsü ve bilgileri
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.TopCenter
+                            ) {
+                                // Pokemon görüntüsü
+                                AsyncImage(
+                                    model = ImageRequest.Builder(LocalContext.current)
+                                        .data(pokemon.imageUrl)
+                                        .crossfade(true)
+                                        .build(),
+                                    contentDescription = pokemon.name,
+                                    modifier = Modifier
+                                        .size(200.dp)
+                                        .offset(y = (-40).dp),
+                                    contentScale = ContentScale.Fit
+                                )
+                                
+                                // Detaylar
+                                Surface(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(top = 140.dp),
+                                    shape = PokemonDetailCardShape,
+                                    color = MaterialTheme.colorScheme.surface
                                 ) {
-                                    for (j in 0 until columns) {
-                                        val index = i * columns + j
-                                        if (index < displayMoves.size) {
-                                            val move = displayMoves[index]
-                                            MoveChip(
-                                                moveName = move,
-                                                color = dominantColor.value,
-                                                modifier = Modifier.weight(1f)
-                                            )
-                                        } else {
-                                            Spacer(modifier = Modifier.weight(1f))
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(24.dp)
+                                            .verticalScroll(rememberScrollState()),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        // Pokemon numarası ve adı
+                                        Text(
+                                            text = "#${pokemon.id.toString().padStart(3, '0')}",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                        )
+                                        
+                                        Text(
+                                            text = pokemon.name.replaceFirstChar { it.uppercase() },
+                                            style = MaterialTheme.typography.displayMedium,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        
+                                        Spacer(modifier = Modifier.height(16.dp))
+                                        
+                                        // Pokemon tipleri
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            modifier = Modifier.padding(bottom = 24.dp)
+                                        ) {
+                                            pokemon.types.forEach { type ->
+                                                PokemonTypeChip(
+                                                    type = type,
+                                                    modifier = Modifier.height(32.dp)
+                                                )
+                                            }
                                         }
+                                        
+                                        // Fiziksel bilgiler
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(vertical = 16.dp),
+                                            horizontalArrangement = Arrangement.SpaceEvenly
+                                        ) {
+                                            PhysicalInfo(
+                                                title = "Boy",
+                                                value = "${pokemon.height/10.0} m"
+                                            )
+                                            
+                                            VerticalDivider()
+                                            
+                                            PhysicalInfo(
+                                                title = "Ağırlık",
+                                                value = "${pokemon.weight/10.0} kg"
+                                            )
+                                        }
+                                        
+                                        Spacer(modifier = Modifier.height(24.dp))
+                                        
+                                        // Yetenekler Başlığı
+                                        SectionTitle(title = "Yetenekler")
+                                        
+                                        // Yetenekler
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            pokemon.abilities.forEach { ability ->
+                                                val displayName = ability.replaceFirstChar { it.uppercase() }
+                                                    .replace("-", " ")
+                                                
+                                                AbilityChip(
+                                                    name = displayName,
+                                                    color = typeColor,
+                                                    modifier = Modifier.weight(1f)
+                                                )
+                                            }
+                                        }
+                                        
+                                        Spacer(modifier = Modifier.height(24.dp))
+                                        
+                                        // İstatistikler Başlığı
+                                        SectionTitle(title = "İstatistikler")
+                                        
+                                        // İstatistikler
+                                        StatsSection(
+                                            stats = pokemon.stats.associate { it.name to it.value },
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(top = 8.dp, bottom = 24.dp)
+                                        )
                                     }
                                 }
                             }
-                            
-                            if (pokemonDetail.moves.size > 12) {
-                                Text(
-                                    text = "... ve ${pokemonDetail.moves.size - 12} adet daha",
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(top = 16.dp),
-                                    textAlign = TextAlign.Center,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
                         }
                     }
                 }
-                
-                Spacer(modifier = Modifier.height(24.dp))
             }
         }
     }
 }
 
 @Composable
-fun MoveChip(
-    moveName: String,
-    color: Color,
-    modifier: Modifier = Modifier
-) {
-    Card(
-        modifier = modifier,
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = color.copy(alpha = 0.1f)
-        ),
-        elevation = CardDefaults.cardElevation(
-            defaultElevation = 0.dp
-        )
-    ) {
-        Text(
-            text = moveName.replaceFirstChar { it.uppercase() },
-            modifier = Modifier
-                .padding(horizontal = 12.dp, vertical = 8.dp)
-                .fillMaxWidth(),
-            textAlign = TextAlign.Center,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Medium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            color = color.copy(alpha = 0.8f)
-        )
-    }
+fun SectionTitle(title: String) {
+    Text(
+        text = title,
+        style = MaterialTheme.typography.titleLarge,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 8.dp),
+        textAlign = TextAlign.Start
+    )
 }
 
 @Composable
-fun InfoRow(
-    title: String, 
-    value: String,
-    accentColor: Color
-) {
-    Row(
+fun VerticalDivider() {
+    Box(
         modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 8.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+            .height(40.dp)
+            .width(1.dp)
+            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f))
+    )
+}
+
+@Composable
+fun PhysicalInfo(
+    title: String,
+    value: String,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = modifier
     ) {
         Text(
             text = title,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Medium,
-            color = accentColor
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
         )
+        
         Text(
             text = value,
-            style = MaterialTheme.typography.bodyLarge,
-            fontWeight = FontWeight.Medium,
-            color = MaterialTheme.colorScheme.onSurface
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold
         )
     }
 }
 
 @Composable
-fun StatBar(
-    statName: String,
-    statValue: Int,
-    maxValue: Int,
-    color: Color
+fun AbilityChip(
+    name: String,
+    color: Color,
+    modifier: Modifier = Modifier
 ) {
-    val percentage = (statValue.toFloat() / maxValue).coerceIn(0f, 1f)
-    
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(16.dp),
+        color = color.copy(alpha = 0.1f)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+        Box(
+            modifier = Modifier
+                .padding(vertical = 8.dp, horizontal = 16.dp),
+            contentAlignment = Alignment.Center
         ) {
             Text(
-                text = statName,
-                style = MaterialTheme.typography.titleMedium,
+                text = name,
+                textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Medium,
                 color = color
             )
-            
-                Text(
-                text = statValue.toString(),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = color
-            )
         }
-        
-        Spacer(modifier = Modifier.height(8.dp))
-        
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(16.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+    }
+}
+
+@Composable
+fun LoadingState() {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(percentage)
-                    .height(16.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(
-                        brush = Brush.horizontalGradient(
-                            colors = listOf(
-                                color.copy(alpha = 0.7f),
-                                color
-                            )
-                        )
-                    )
+            CircularProgressIndicator(
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(48.dp)
+            )
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            Text(
+                text = "Pokemon yükleniyor...",
+                style = MaterialTheme.typography.titleMedium
             )
         }
     }
+}
+
+@Composable
+fun ErrorState(
+    message: String,
+    onRetry: () -> Unit
+) {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Text(
+                text = "Bir hata oluştu",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center
+            )
+            
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodyMedium,
+                textAlign = TextAlign.Center
+            )
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            Button(
+                onClick = onRetry,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary
+                )
+            ) {
+                Text("Tekrar Dene")
+            }
+        }
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun SectionTitlePreview() {
+    SectionTitle(title = "Özellikler")
+}
+
+@Preview(showBackground = true)
+@Composable
+fun PhysicalInfoPreview() {
+    PhysicalInfo(
+        title = "Ağırlık",
+        value = "6.9kg"
+    )
+}
+
+@Preview(showBackground = true)
+@Composable
+fun AbilityChipPreview() {
+    AbilityChip(
+        name = "Overgrow",
+        color = getPokemonTypeColor("grass")
+    )
+}
+
+@Preview(showBackground = true, showSystemUi = true)
+@Composable
+fun PokemonDetailScreenPreview() {
+    val samplePokemon = PokemonDetailUiState.Success(
+        pokemon = PokemonDetail(
+            id = 1,
+            name = "bulbasaur",
+            imageUrl = "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/1.png",
+            types = listOf("grass", "poison"),
+            height = 7,
+            weight = 69,
+            abilities = listOf("overgrow", "chlorophyll"),
+            stats = listOf(
+                Stat("hp", 45),
+                Stat("attack", 49),
+                Stat("defense", 49),
+                Stat("special-attack", 65),
+                Stat("special-defense", 65),
+                Stat("speed", 45)
+            ),
+            isFavorite = true
+        ),
+        favoriteActionMessage = null
+    )
+    
+    PokemonDetailScreen(
+        uiState = samplePokemon,
+        onBackClick = {},
+        onRetry = {},
+        onToggleFavorite = {}
+    )
 } 
